@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-filesystem
+  namespace: bedrock-agent
+  labels:
+    app: mcp-filesystem
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mcp-filesystem
+  template:
+    metadata:
+      labels:
+        app: mcp-filesystem
+    spec:
+      containers:
+      - name: mcp-filesystem
+        image: YOUR_ECR_REGISTRY/mcp-filesystem:latest
+        ports:
+        - containerPort: 3001
+          name: http
+        env:
+        - name: PORT
+          value: "3001"
+        - name: WORKSPACE_ROOT
+          value: "/workspace"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: workspace
+        persistentVolumeClaim:
+          claimName: workspace-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-filesystem
+  namespace: bedrock-agent
+  labels:
+    app: mcp-filesystem
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3001
+    targetPort: 3001
+    protocol: TCP
+    name: http
+  selector:
+    app: mcp-filesystem
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: workspace-pvc
+  namespace: bedrock-agent
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc  # Use EFS for shared storage
+  resources:
+    requests:
+      storage: 10Gi

@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  agent-service:
+    build:
+      context: ./agent-service
+      dockerfile: Dockerfile
+    container_name: agent-service
+    ports:
+      - "8000:8000"
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - MCP_FILESYSTEM_URL=http://mcp-filesystem:3001
+      - MCP_CALCULATOR_URL=http://mcp-calculator:3002
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-3-5-sonnet-20241022-v2:0}
+    depends_on:
+      - mcp-filesystem
+      - mcp-calculator
+    networks:
+      - agent-network
+
+  mcp-filesystem:
+    build:
+      context: ./mcp-servers/filesystem
+      dockerfile: Dockerfile
+    container_name: mcp-filesystem
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./workspace:/workspace:Z
+    environment:
+      - PORT=3001
+      - WORKSPACE_ROOT=/workspace
+    networks:
+      - agent-network
+
+  mcp-calculator:
+    build:
+      context: ./mcp-servers/calculator
+      dockerfile: Dockerfile
+    container_name: mcp-calculator
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+    networks:
+      - agent-network
+
+networks:
+  agent-network:
+    driver: bridge
+
+volumes:
+  workspace:

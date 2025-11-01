@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bedrock-agent-config
+  namespace: bedrock-agent
+data:
+  AWS_REGION: "us-east-1"
+  BEDROCK_MODEL_ID: "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+  MCP_FILESYSTEM_URL: "http://mcp-filesystem:3001"
+  MCP_CALCULATOR_URL: "http://mcp-calculator:3002"

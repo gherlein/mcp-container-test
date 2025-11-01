@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: bedrock-agent
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - agent-deployment.yaml
+  - mcp-filesystem-deployment.yaml
+  - mcp-calculator-deployment.yaml
+
+# You can add common labels, annotations, or image transformations here
+commonLabels:
+  project: bedrock-agent
+  managed-by: kustomize

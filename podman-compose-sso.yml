@@ -1,0 +1,62 @@
+version: '3.8'
+
+# Alternative Podman Compose configuration for AWS SSO
+# This mounts your ~/.aws directory into the container
+# Usage: podman-compose -f podman-compose-sso.yml up -d
+
+services:
+  agent-service:
+    build:
+      context: ./agent-service
+      dockerfile: Dockerfile
+    container_name: agent-service
+    ports:
+      - "8000:8000"
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_PROFILE=${AWS_PROFILE:-default}
+      - MCP_FILESYSTEM_URL=http://mcp-filesystem:3001
+      - MCP_CALCULATOR_URL=http://mcp-calculator:3002
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-3-5-sonnet-20241022-v2:0}
+    volumes:
+      # Mount AWS credentials directory (read-only for security)
+      - ${HOME}/.aws:/root/.aws:ro,Z
+    depends_on:
+      - mcp-filesystem
+      - mcp-calculator
+    networks:
+      - agent-network
+
+  mcp-filesystem:
+    build:
+      context: ./mcp-servers/filesystem
+      dockerfile: Dockerfile
+    container_name: mcp-filesystem
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./workspace:/workspace:Z
+    environment:
+      - PORT=3001
+      - WORKSPACE_ROOT=/workspace
+    networks:
+      - agent-network
+
+  mcp-calculator:
+    build:
+      context: ./mcp-servers/calculator
+      dockerfile: Dockerfile
+    container_name: mcp-calculator
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+    networks:
+      - agent-network
+
+networks:
+  agent-network:
+    driver: bridge
+
+volumes:
+  workspace:
