@@ -69,6 +69,38 @@ Tools for math operations:
 
 ### 1. Configure AWS Credentials
 
+You have two options for AWS authentication:
+
+#### Option A: AWS SSO (Recommended for Development)
+
+If you use AWS SSO for authentication (most common in organizations):
+
+**Quick Start (One Command):**
+```bash
+# Login to SSO first
+aws sso login --profile your-profile
+
+# Export credentials and start services
+make up-sso PROFILE=your-profile
+```
+
+**What this does:**
+- Logs you into AWS SSO (if needed)
+- Extracts temporary credentials
+- Creates `.env` file automatically
+- Starts all containers
+
+**When credentials expire** (typically 1-12 hours), just re-run:
+```bash
+make up-sso PROFILE=your-profile
+```
+
+See [AWS_SSO_SETUP.md](AWS_SSO_SETUP.md) for detailed SSO setup or [SSO_QUICK_REFERENCE.md](SSO_QUICK_REFERENCE.md) for a quick reference card.
+
+#### Option B: Static IAM Credentials
+
+If you have permanent IAM user credentials:
+
 Create a `.env` file:
 
 ```bash
@@ -76,11 +108,20 @@ cat > .env <<EOF
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
-# AWS_SESSION_TOKEN=your_session_token  # If using temporary credentials
+# AWS_SESSION_TOKEN=your_session_token  # Only for temporary credentials
+BEDROCK_MODEL_ID=us.anthropic.claude-3-5-sonnet-20241022-v2:0
+MCP_FILESYSTEM_URL=http://mcp-filesystem:3001
+MCP_CALCULATOR_URL=http://mcp-calculator:3002
 EOF
 ```
 
+**Note:** Static credentials are easier for getting started but less secure than SSO for daily development.
+
 ### 2. Build and Run
+
+**If you used AWS SSO (Option A):** You're already done! `make up-sso` started everything. Skip to step 3.
+
+**If you used static credentials (Option B):**
 
 ```bash
 # Using Makefile (recommended)
@@ -177,6 +218,62 @@ podman-compose -f podman-compose.yml down
 # With podman pod
 make pod-stop
 make pod-remove
+```
+
+### 7. Daily Development Workflow
+
+#### Using AWS SSO (Recommended)
+
+**Morning / Start of Session:**
+```bash
+# One command to start everything
+make up-sso PROFILE=your-profile
+```
+
+**During Development:**
+```bash
+# View logs
+make logs
+
+# Test changes
+./test-agent.sh
+
+# Check status
+podman ps
+```
+
+**When Credentials Expire:**
+You'll see "ExpiredToken" or "Unable to locate credentials" errors. Just re-run:
+```bash
+make up-sso PROFILE=your-profile
+```
+
+**End of Day:**
+```bash
+make down
+```
+
+#### Using Static Credentials
+
+**Start Once:**
+```bash
+# First time only - create .env file
+cp .env.example .env
+# Edit .env with your credentials
+
+# Start services
+make build
+make up
+```
+
+**Restart Later:**
+```bash
+make up  # Credentials persist in .env
+```
+
+**Stop:**
+```bash
+make down
 ```
 
 ## EKS Deployment
@@ -439,19 +536,95 @@ kubectl port-forward -n bedrock-agent svc/agent-service 8000:80
 
 ## Security Best Practices
 
-1. **Never commit AWS credentials** - Use IRSA for EKS or environment variables locally
-2. **Restrict Bedrock IAM permissions** - Only allow specific model invocations
-3. **Use private subnets** - Deploy MCP servers in private subnets
-4. **Enable pod security standards** - Use Kubernetes security contexts
-5. **Scan container images** - Use ECR image scanning
-6. **Limit filesystem access** - Mount only necessary directories
+1. **Use AWS SSO for development** - Temporary credentials that auto-expire are more secure than static keys
+   - See [AWS_SSO_SETUP.md](AWS_SSO_SETUP.md) for setup
+   - Run `make up-sso PROFILE=your-profile` for automated credential management
+2. **Never commit AWS credentials** - `.env` files are in `.gitignore` - never override this
+   - Use IRSA (IAM Roles for Service Accounts) for EKS deployments
+   - Use SSO for local development
+   - Only use static IAM user credentials as a last resort
+3. **Restrict Bedrock IAM permissions** - Only allow specific model invocations
+   - Limit to `bedrock:InvokeModel` on specific model ARNs
+   - Don't use `bedrock:*` permissions
+4. **Use private subnets** - Deploy MCP servers in private subnets for production
+5. **Enable pod security standards** - Use Kubernetes security contexts and pod security admission
+6. **Scan container images** - Use ECR image scanning or tools like Trivy
+7. **Limit filesystem access** - Mount only necessary directories in containers
+8. **Rotate credentials regularly** - SSO credentials expire automatically; rotate static credentials if used
 
 ## Troubleshooting
 
 ### Agent can't connect to Bedrock
-- Check AWS credentials are configured
+
+**Error:** "Unable to locate credentials"
+
+**Solutions:**
+- **If using AWS SSO:**
+  ```bash
+  # Check if logged in
+  aws sts get-caller-identity --profile your-profile
+
+  # If not logged in, login and re-run
+  aws sso login --profile your-profile
+  make up-sso PROFILE=your-profile
+  ```
+
+- **If using static credentials:**
+  - Check `.env` file exists and has AWS credentials
+  - Verify credentials are not empty
+  - Run: `./troubleshoot-credentials.sh`
+
+**Error:** "ExpiredToken: The security token included in the request is expired"
+
+**Solution:** SSO credentials expired, re-run:
+```bash
+make up-sso PROFILE=your-profile
+```
+
+**Error:** "Invocation of model ID ... with on-demand throughput isn't supported"
+
+**Solution:** Model ID format changed. Run:
+```bash
+./fix-model-id.sh
+make down && make up
+```
+See [BEDROCK_MODEL_UPDATE.md](BEDROCK_MODEL_UPDATE.md) for details.
+
+**Other checks:**
 - Verify IAM permissions include `bedrock:InvokeModel`
-- Ensure the model ID is correct and available in your region
+- Ensure the model ID uses inference profile format (e.g., `us.anthropic.claude-3-5-sonnet-20241022-v2:0`)
+- Check Bedrock is available in your region
+
+### AWS SSO Issues
+
+**SSO session expired:**
+```bash
+# Re-login
+aws sso login --profile your-profile
+
+# Restart services with fresh credentials
+make up-sso PROFILE=your-profile
+```
+
+**Can't find SSO profile:**
+```bash
+# List available profiles
+aws configure list-profiles
+
+# Configure SSO if needed
+aws configure sso --profile your-profile
+```
+
+**Credentials in container are empty:**
+```bash
+# Check what container sees
+podman exec agent-service printenv | grep AWS
+
+# If empty, re-export credentials
+make up-sso PROFILE=your-profile
+```
+
+See [AWS_SSO_SETUP.md](AWS_SSO_SETUP.md) for comprehensive SSO troubleshooting.
 
 ### MCP servers not responding
 - Check MCP server logs for errors

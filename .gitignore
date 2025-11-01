@@ -457,3 +457,7 @@ docs/.doctrees/
 # Core dumps
 core
 core.*
+
+# Cost monitoring output
+bedrock-costs.json
+*-costs.json
