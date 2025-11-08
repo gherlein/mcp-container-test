@@ -49,7 +49,7 @@ graph TB
         subgraph "MCP Filesystem Container :3001"
             FileAPI[Express API]
             FileTools[File Operations]
-            Workspace[/workspace Volume]
+            Workspace[workspace Volume]
         end
     end
 
